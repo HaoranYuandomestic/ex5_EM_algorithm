@@ -60,39 +60,19 @@
 \newcommand{\labplace}{数学实验中心}
 \newcommand{\experimenttitle}{EM 算法解决混合高斯模型聚类问题}
 \newcommand{\schoolyear}{2023--2024学年\quad 第二学期}
+\usepackage{fancyhdr}
+
+% 设置 fancyhdr 样式
+\fancypagestyle{plain}{
+	\fancyhf{} % 清除所有预设的页眉和页脚
+	\renewcommand{\headrulewidth}{0pt} % 如果不需要页眉线
+	\renewcommand{\footrulewidth}{0pt} % 如果不需要页脚线
+}
+
+% 应用新的 plain 样式到所有页面
+\pagestyle{plain}
 
 \begin{document}
-
-\begin{titlepage}
-	\centering
-	{\includegraphics[scale=1]{figure1.jpg}}
-
-	\vspace{1.8cm}
-
-	{\heiti\zihao{-1} 机器学习\par}
-
-	\vspace{2.2cm}
-
-	{\zihao{3} 实验报告\par}
-
-	\vspace{1.8cm}
-
-	{\zihao{4} \schoolyear\par}
-
-	\vspace{1.8cm}
-
-	\renewcommand{\arraystretch}{2.0}
-	\begin{tabular}{>{\raggedleft\arraybackslash}p{7cm} p{9cm}}
-		学\hspace{2em}院： & \schoolname \\
-		班\hspace{2em}级： & \classname \\
-		学\hspace{2em}号： & \studentid \\
-		姓\hspace{2em}名： & \studentname \\
-		指导教师： & \teachername \\
-		实验地点： & \labplace \\
-	\end{tabular}
-
-	\vfill
-\end{titlepage}
 
 \section*{实验五：EM 算法解决混合高斯模型聚类问题}
 
@@ -101,35 +81,196 @@
 
 根据题目要求，实验重点是手写 EM 过程，不直接调用现成的 GMM 聚类函数。最终输出聚类准确率（通过标签重排后与真实标签比较）以及对数似然曲线。
 
-\section*{二、算法原理}
-高斯混合模型可写为：
-\[
-p(x)=\sum_{k=1}^{K}\pi_k\,\mathcal{N}(x\mid\mu_k,\Sigma_k),\quad \sum_{k=1}^{K}\pi_k=1
-\]
-其中 $\pi_k$ 是混合系数，$\mu_k$ 和 $\Sigma_k$ 分别是第 $k$ 个高斯成分的均值与协方差。
+\section*{二、EM算法原理}
 
-EM 算法迭代执行两步：
+EM（Expectation-Maximization，期望最大化）算法是一类用于含有隐变量模型参数估计的迭代优化方法。其核心思想是：当观测数据不完整，或者模型中存在无法直接观测的隐变量时，原始似然函数往往难以直接求解，此时可以通过“先估计隐变量的分布，再更新模型参数”的方式，逐步逼近极大似然解。
+
+在本实验中，EM算法主要用于高斯混合模型（Gaussian Mixture Model, GMM）的参数估计。高斯混合模型假设样本数据并非来自单一高斯分布，而是由若干个高斯分布按照一定概率加权混合生成。因此，每个样本点属于哪一个高斯分量并不能直接观察到，这一“类别归属”就是模型中的隐变量，而 EM 算法正是求解该类问题的经典方法。
+
+\subsection*{高斯混合模型的基本思想}
+
+设数据集为 $X=\{x_1,x_2,\dots,x_N\}$ ,其中每个样本 $x_i \in \mathbb{R}^d$。假设数据由 $K$ 个高斯分布混合生成，则高斯混合模型可表示为
+\[
+p(x_i \mid \Theta)=\sum_{k=1}^{K}\pi_k \,\mathcal{N}(x_i\mid \mu_k,\Sigma_k),
+\]
+其中：
+
+$\pi_k$ 表示第 $k$ 个高斯分量的混合系数，满足 $\pi_k \ge 0,\quad \sum_{k=1}^{K}\pi_k=1$,  $\mu_k$ 表示第 $k$ 个高斯分量的均值向量； $\Sigma_k$ 表示第 $k$ 个高斯分量的协方差矩阵； $\Theta=\{\pi_k,\mu_k,\Sigma_k\}_{k=1}^{K}$ 表示模型的全部参数。
+
+其中，多元高斯分布的概率密度函数为
+\[
+\mathcal{N}(x\mid \mu,\Sigma)=\frac{1}{(2\pi)^{d/2}|\Sigma|^{1/2}}
+\exp\left(
+-\frac{1}{2}(x-\mu)^T\Sigma^{-1}(x-\mu)
+\right).
+\]
+
+从上述表达式可以看出，一个样本的概率密度是多个高斯分量加权求和后的结果。也就是说，我们只知道样本出现了，但并不知道它究竟由哪一个高斯分量生成，因此需要引入隐变量描述这一未知信息。
+
+\subsection*{隐变量的引入}
+
+为了表示样本的类别归属，引入隐变量 $z_i=(z_{i1},z_{i2},\dots,z_{iK}),$ 
+
+其中
+$z_{ik}\in\{0,1\},\quad \sum_{k=1}^{K}z_{ik}=1.$ .若 $z_{ik}=1$，则表示样本 $x_i$ 由第 $k$ 个高斯分量生成；否则 $z_{ik}=0$。显然，$z_i$ 是一个 one-hot 编码向量。若隐变量 $Z=\{z_1,z_2,\dots,z_N\}$ 已知，则完整数据的似然函数可以写为
+\[
+p(X,Z\mid \Theta)=\prod_{i=1}^{N}\prod_{k=1}^{K}
+\left[\pi_k \mathcal{N}(x_i\mid \mu_k,\Sigma_k)\right]^{z_{ik}}.
+\]
+
+取对数可得完整数据对数似然函数
+\[
+\log p(X,Z\mid \Theta)=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+z_{ik}\log\left[\pi_k \mathcal{N}(x_i\mid \mu_k,\Sigma_k)\right].
+\]
+
+如果隐变量 $Z$ 已知，那么参数估计将变得非常直接，因为每个样本属于哪个分量已经明确给出。但在实际问题中，$Z$ 是未知的，因此只能对其进行概率意义下的估计，这正是 EM 算法的出发点。
+
+\subsection*{EM算法的基本思想}
+
+EM算法由两步交替进行：
+
+\begin{itemize}
+	\item E 步（Expectation step）：在当前参数已知的条件下，计算隐变量的后验分布，即每个样本属于各个高斯分量的概率；
+	\item M 步（Maximization step）：将 E 步得到的隐变量分布视为“软分配结果”，重新估计模型参数，使完整数据对数似然的期望最大化。
+\end{itemize}
+
+通过不断重复 E 步和 M 步，模型参数逐步更新，最终收敛到局部最优解。
+
+\subsection*{E步：计算后验概率（责任度）}
+
+在第 $t$ 次迭代中，设当前参数为
+\[
+\Theta^{(t)}=\{\pi_k^{(t)},\mu_k^{(t)},\Sigma_k^{(t)}\}_{k=1}^{K}.
+\]
+
+E 步需要计算每个样本属于第 $k$ 个高斯分量的后验概率，也称为“责任度”（responsibility）：
+\[
+\gamma_{ik}
+=
+P(z_{ik}=1\mid x_i,\Theta^{(t)}).
+\]
+
+根据贝叶斯公式可得
+\[
+\gamma_{ik}
+=
+\frac{\pi_k^{(t)} \mathcal{N}(x_i\mid \mu_k^{(t)},\Sigma_k^{(t)})}
+{\sum_{j=1}^{K}\pi_j^{(t)} \mathcal{N}(x_i\mid \mu_j^{(t)},\Sigma_j^{(t)})}.
+\]
+
+该值反映了样本 $x_i$ 由第 $k$ 个高斯分量生成的相对可能性，取值范围在 $[0,1]$ 之间，且满足
+\[
+\sum_{k=1}^{K}\gamma_{ik}=1.
+\]
+
+与 K-means 算法中“每个样本只属于某一个簇”的硬划分不同，GMM 中每个样本可以以不同概率同时属于多个簇，因此 EM 算法得到的是一种软聚类结果。也正因为这种软分配机制，高斯混合模型通常比 K-means 更灵活，能够描述不同大小、方向和形状的簇结构。
+
+\subsection*{M步：更新模型参数}
+
+在 E 步求得责任度 $\gamma_{ik}$ 之后，M 步的目标是最大化完整数据对数似然的期望。定义
+\[
+Q(\Theta,\Theta^{(t)})=
+\mathbb{E}_{Z\mid X,\Theta^{(t)}}[\log p(X,Z\mid \Theta)].
+\]
+
+将责任度代入后，可得
+\[
+Q(\Theta,\Theta^{(t)})
+=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+\gamma_{ik}\log\left[\pi_k \mathcal{N}(x_i\mid \mu_k,\Sigma_k)\right].
+\]
+
+对该目标函数分别关于 $\pi_k,\mu_k,\Sigma_k$ 求极值，可得到参数更新公式。首先定义第 $k$ 个高斯分量的“有效样本数”：$N_k=\sum_{i=1}^{N}\gamma_{ik}.$ 则混合系数更新为 $\pi_k^{(t+1)}=\frac{N_k}{N}.$ 均值向量更新为
+\[
+\mu_k^{(t+1)}=
+\frac{1}{N_k}\sum_{i=1}^{N}\gamma_{ik}x_i.
+\]
+
+协方差矩阵更新为
+\[
+\Sigma_k^{(t+1)}=
+\frac{1}{N_k}\sum_{i=1}^{N}\gamma_{ik}
+(x_i-\mu_k^{(t+1)})(x_i-\mu_k^{(t+1)})^T.
+\]
+
+从这些公式可以看出，EM 算法中的参数更新本质上是对每个高斯分量做加权统计：责任度越大的样本，对对应高斯分量参数的影响越大。
+
+\subsection*{EM算法的迭代过程}
+
+综合来看，EM算法求解高斯混合模型参数的流程如下：
+
 \begin{enumerate}
-	\item \textbf{E 步：} 计算后验责任度
-	\[
-	\gamma_{ik}=\frac{\pi_k\mathcal{N}(x_i\mid\mu_k,\Sigma_k)}{\sum_{j=1}^{K}\pi_j\mathcal{N}(x_i\mid\mu_j,\Sigma_j)}
-	\]
-	\item \textbf{M 步：} 利用责任度更新参数
-	\[
-	N_k=\sum_{i=1}^{n}\gamma_{ik},\quad
-	\pi_k=\frac{N_k}{n},\quad
-	\mu_k=\frac{1}{N_k}\sum_{i=1}^{n}\gamma_{ik}x_i,
-	\]
-	\[
-	\Sigma_k=\frac{1}{N_k}\sum_{i=1}^{n}\gamma_{ik}(x_i-\mu_k)(x_i-\mu_k)^T
-	\]
+	\item 初始化参数 $\Theta^{(0)}=\{\pi_k^{(0)},\mu_k^{(0)},\Sigma_k^{(0)}\}$；
+	\item 在当前参数下，计算每个样本对每个高斯分量的责任度 $\gamma_{ik}$；
+	\item 根据责任度计算各分量的有效样本数 $N_k$；
+	\item 更新混合系数、均值向量和协方差矩阵；
+	\item 计算新的对数似然值，判断是否收敛；
+	\item 若未收敛，则返回 E 步继续迭代。
 \end{enumerate}
 
-每轮迭代计算一次总对数似然
+其核心迭代结构可概括为：
 \[
-\mathcal{L}=\sum_{i=1}^{n}\log\left(\sum_{k=1}^{K}\pi_k\mathcal{N}(x_i\mid\mu_k,\Sigma_k)\right)
+\text{初始化参数}
+\rightarrow
+\text{E步：估计隐变量}
+\rightarrow
+\text{M步：更新参数}
+\rightarrow
+\text{判断收敛}
+\rightarrow
+\text{重复迭代}.
 \]
-并用其增量判断收敛。
+
+\subsection*{对数似然函数与收敛判据}
+
+在每次参数更新后，通常需要计算当前模型对观测数据的对数似然值：
+\[
+\log p(X\mid \Theta)=
+\sum_{i=1}^{N}\log\left(
+\sum_{k=1}^{K}\pi_k \mathcal{N}(x_i\mid \mu_k,\Sigma_k)
+\right).
+\]
+
+EM算法的重要性质之一是：在每一次迭代中，对数似然值不会下降，即
+\[
+\log p(X\mid \Theta^{(t+1)}) \ge
+\log p(X\mid \Theta^{(t)}).
+\]
+
+因此，EM算法通常可通过以下方式判断是否收敛：
+
+\begin{itemize}
+	\item 相邻两次迭代的对数似然增量小于给定阈值；
+	\item 参数更新幅度小于给定阈值；
+	\item 达到预设最大迭代次数。
+\end{itemize}
+
+在实验中，最常用的收敛判据是对数似然变化量是否足够小。
+
+\subsection*{EM算法的优点与局限性}
+
+EM算法的优点主要体现在以下几个方面：
+
+\begin{itemize}
+	\item 能够有效处理含有隐变量的概率模型；
+	\item 每一步都有明确的数学意义，推导清晰；
+	\item 对高斯混合模型参数估计尤其有效；
+	\item 相较于硬聚类方法，能够提供更柔性的样本归属概率。
+\end{itemize}
+
+但 EM 算法也存在一定局限性：
+
+\begin{itemize}
+	\item 对初始参数较为敏感，不同初始化可能导致不同结果；
+	\item 只能保证收敛到局部最优解，不能保证全局最优；
+	\item 当协方差矩阵接近奇异时，数值计算可能不稳定；
+	\item 聚类数 $K$ 通常需要事先指定。
+\end{itemize}
+
+因此，在实际应用中，常通过多次随机初始化、协方差正则化等方式提高算法稳定性。
 
 \section*{三、实验步骤与实现细节}
 \begin{enumerate}
@@ -144,7 +285,7 @@ EM 算法迭代执行两步：
 \end{enumerate}
 
 \section*{四、核心代码}
-下面列出实现中最关键的 EM 主体结构。
+下面列出实现中最关键的 EM 主体结构。The code of this part is available at \footnote{https://github.com/HaoranYuandomestic/ex5\_EM\_algorithm.git}
 
 \begin{lstlisting}
 class GMMEM:
